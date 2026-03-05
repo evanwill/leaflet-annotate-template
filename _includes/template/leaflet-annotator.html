@@ -95,11 +95,11 @@ var OpenStreetMap_Mapnik = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{
   // ── Utility: colored SVG pin icon ──────────────────────────
   function makeIcon(colorName) {
     const hex  = colors[colorName] || colors.primary;
-    const text = colorName === 'warning' ? '#212529' : '#ffffff';
-    const svg  = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="34" viewBox="0 0 26 34">
-      <path d="M13 0C5.82 0 0 5.82 0 13c0 9.14 13 21 13 21S26 22.14 26 13C26 5.82 20.18 0 13 0z"
-            fill="${hex}" stroke="rgba(0,0,0,.25)" stroke-width="1"/>
-      <circle cx="13" cy="13" r="5" fill="${text}" opacity=".35"/>
+    //const dot = colorName === 'warning' ? '#212529' : '#ffffff';
+    const dot = "#ffffff";
+    const svg  = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="34" viewBox="0 0 26 34" role="img" aria-label="Map marker">
+      <path d="M13 0C5.82 0 0 5.82 0 13c0 9.14 13 21 13 21S26 22.14 26 13C26 5.82 20.18 0 13 0z" fill="${hex}" stroke="rgba(0,0,0,.25)" stroke-width="1" opacity=".85"/>
+      <circle cx="13" cy="13" r="5" fill="${dot}" opacity=".5"/>
     </svg>`;
     return L.divIcon({ html: svg, className: '', iconSize: [26, 34], iconAnchor: [13, 34], popupAnchor: [0, -34] });
   }
