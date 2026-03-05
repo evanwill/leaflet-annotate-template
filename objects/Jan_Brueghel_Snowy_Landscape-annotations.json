@@ -1,0 +1,53 @@
+{
+    "type": "CRSFeatureCollection",
+    "width": 1920,
+    "height": 1138,
+    "imageurl": "/objects/Jan_Brueghel_Snowy_Landscape.jpg",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    801,
+                    652
+                ]
+            },
+            "properties": {
+                "title": "Town well",
+                "description": "This well seems to have a cantilevered bucket. Quite a few similar mechanical devices are featured in the painting.",
+                "color": "primary"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    479,
+                    1051
+                ]
+            },
+            "properties": {
+                "title": "Ice skates",
+                "description": "These people appear to have ice skates on the frozen river.",
+                "color": "success"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    1449,
+                    876
+                ]
+            },
+            "properties": {
+                "title": "Firewood",
+                "description": "On a cold day as depicted in the painting, having firewood would be essential for survival.",
+                "color": "danger"
+            }
+        }
+    ]
+}

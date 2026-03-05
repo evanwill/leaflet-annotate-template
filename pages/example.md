@@ -5,11 +5,17 @@ nav_order: 1
 leaflet-viewer: true 
 ---
 
-Write pages in Markdown.
-Add annotated images using the "leaflet-item.html" include!
+Write page content in Markdown.
+Add annotated images and maps using the "leaflet-item.html" include!
 
-## Leaflet Annotated Example
+## Image Example
 
-`{% raw %}{% include leaflet-item.html image="campus02023.jpg" annotation="campus02023-annotations.json" %}{% endraw %}`
+`{% raw %}{% include leaflet-item.html annotation="Jan_Brueghel_Snowy_Landscape-annotations.json" %}{% endraw %}`
 
-{% include leaflet-item.html image="campus02023.jpg" annotation="campus02023-annotations.json" %}
+{% include leaflet-item.html annotation="Jan_Brueghel_Snowy_Landscape-annotations.json" %}
+
+## Map Example
+
+`{% raw %}{% include leaflet-item.html annotation="brueghel_map-annotations.json" %}{% endraw %}`
+
+{% include leaflet-item.html annotation="brueghel_map-annotations.json" %}

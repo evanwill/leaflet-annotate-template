@@ -1,0 +1,51 @@
+{
+    "type": "FeatureCollection",
+    "basemap": "Esri_WorldImagery",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    4.418939283455286,
+                    51.209969950970915
+                ]
+            },
+            "properties": {
+                "title": "Antwerp",
+                "description": "Jan Brueghel the Younger was born in Antwerp in 1601. He eventually took over his fathers studio there and spent his later life here.",
+                "color": "primary"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    8.931988482437514,
+                    44.420026977894345
+                ]
+            },
+            "properties": {
+                "title": "Genoa",
+                "description": "Jan Brueghel went to Genoa where he stayed with his cousins, the Antwerp painters and art dealers Lucas de Wael and Cornelis de Wael.",
+                "color": "primary"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    9.182387497031014,
+                    45.47867384514813
+                ]
+            },
+            "properties": {
+                "title": "Milan",
+                "description": "Jan Brueghel the Younger traveled around 1622 to Milan where he was welcomed by Cardinal Federico Borromeo.",
+                "color": "primary"
+            }
+        }
+    ]
+}
