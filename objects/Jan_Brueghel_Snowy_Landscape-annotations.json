@@ -2,7 +2,7 @@
     "type": "CRSFeatureCollection",
     "width": 1920,
     "height": 1138,
-    "imageurl": "/objects/Jan_Brueghel_Snowy_Landscape.jpg",
+    "imageurl": "/leaflet-annotate-template/objects/Jan_Brueghel_Snowy_Landscape.jpg",
     "features": [
         {
             "type": "Feature",
