@@ -46,18 +46,638 @@ var OpenStreetMap_Mapnik = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 });
 
-// Leaflet annotator starts with a form asking user to select an image from "project_images" (images that are in the "objects" folder) or a standard base map layer option. 
-// If the selected option is loaded into leaflet interface
-// the annotator interface allows users to click on the image or map layer to add a point at those coordinates
-// the coordinates on normal maps follow standard lat long
-// on images they use Leaflet CRS.simple, https://leafletjs.com/reference.html#crs
-// https://leafletjs.com/examples/crs-simple/crs-simple.html
-// A form on the side allows the user to add a heading, description text, 
-// and choose a marker color from the list of color options
-// the data is saved into local sessionStorage
-// a button is available to export the annotations as a JSON file
-// for images the JSON file is structured like the file "objects/annotation-example.json"
-// for maps the JSON file is structured like the file "objects/geodata.json"
+/* =========================================================
+   Leaflet Annotator
+   - Setup form lets user pick a project image or a base map
+     layer, and optionally load an existing annotation JSON.
+   - Loaded into Leaflet: images use CRS.Simple (pixel coords);
+     maps use standard lat/lng.
+   - Click on map/image → place marker → fill form (title,
+     description, color) → save to sessionStorage.
+   - Markers are editable; annotations can be deleted.
+   - Export button downloads a JSON file matching the format
+     of annotation-example.json (images) or geodata.json (maps).
+   ========================================================= */
+
+(function () {
+
+  // ── State ──────────────────────────────────────────────────
+  let leafletMap    = null;   // active Leaflet map instance
+  let currentMode   = null;   // 'image' | 'map'
+  let currentImgUrl = '';     // path to the loaded image
+  let currentLayer  = '';     // tile layer key when in map mode
+  let imgNatWidth   = 0;      // natural pixel width of loaded image
+  let imgNatHeight  = 0;      // natural pixel height of loaded image
+  let annotations   = [];     // [{lat, lng, title, description, color}, …]
+  let markerObjs    = [];     // parallel array of L.Marker instances
+  let pendingMarker = null;   // temporary marker before the form is saved
+  let editingIdx    = -1;     // index of annotation being edited (-1 = new)
+
+  /* Tile layer map */
+  const tileLayers = {
+    osm:          OpenStreetMap_Mapnik,
+    esri_street:  Esri_WorldStreetMap,
+    esri_natgeo:  Esri_NatGeoWorldMap,
+    esri_imagery: Esri_WorldImagery
+  };
+
+  const SESSION_KEY = 'leaflet_annotator';
+
+  // ── Utility: colored SVG pin icon ──────────────────────────
+  function makeIcon(colorName) {
+    const hex  = colors[colorName] || colors.primary;
+    const text = colorName === 'warning' ? '#212529' : '#ffffff';
+    const svg  = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="34" viewBox="0 0 26 34">
+      <path d="M13 0C5.82 0 0 5.82 0 13c0 9.14 13 21 13 21S26 22.14 26 13C26 5.82 20.18 0 13 0z"
+            fill="${hex}" stroke="rgba(0,0,0,.25)" stroke-width="1"/>
+      <circle cx="13" cy="13" r="5" fill="${text}" opacity=".35"/>
+    </svg>`;
+    return L.divIcon({ html: svg, className: '', iconSize: [26, 34], iconAnchor: [13, 34], popupAnchor: [0, -34] });
+  }
+
+  // ── Session storage helpers ─────────────────────────────────
+  function saveSession() {
+    const data = { mode: currentMode, imgUrl: currentImgUrl, layer: currentLayer,
+                   imgW: imgNatWidth, imgH: imgNatHeight, annotations };
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); } catch(e) {}
+  }
+
+  function loadSession(key) {
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      // Only restore if the source matches
+      if (key && (data.imgUrl !== key && ('map:' + data.layer) !== key)) return null;
+      return data;
+    } catch(e) { return null; }
+  }
+
+  // ── Get natural image dimensions ────────────────────────────
+  function getImageSize(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload  = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => reject(new Error('Cannot load image: ' + url));
+      img.src = url;
+    });
+  }
+
+  // ── Convert loaded GeoJSON features → internal annotation list ──
+  // GeoJSON stores [lng/x, lat/y]; convert to Leaflet latlng.
+  // For CRS.Simple images the map must be initialised first so we can
+  // call map.unproject([pixel_x, pixel_y], 0) → latlng.
+  function featuresFromJson(json) {
+    const features = (json && json.features) || [];
+    return features
+      .filter(f => f.geometry && f.geometry.type === 'Point')
+      .map(f => ({
+        _rawCoords: f.geometry.coordinates.slice(), // keep [x/lng, y/lat] for later conversion
+        title:       (f.properties && f.properties.title)       || '',
+        description: (f.properties && f.properties.description) || '',
+        color:       (f.properties && f.properties.color)       || 'primary'
+      }));
+  }
+
+  // After the map is ready, resolve _rawCoords → {lat, lng}
+  function resolveCoords(rawList, mode) {
+    return rawList.map(a => {
+      const [c0, c1] = a._rawCoords;
+      let lat, lng;
+      if (mode === 'image') {
+        // c0 = pixel x (column), c1 = pixel y (row from top)
+        // map.unproject([col, row], 0) converts pixel → Leaflet latlng
+        const ll = leafletMap.unproject([c0, c1], 0);
+        lat = ll.lat; lng = ll.lng;
+      } else {
+        // standard GeoJSON [lng, lat]
+        lat = c1; lng = c0;
+      }
+      return { lat, lng, title: a.title, description: a.description, color: a.color };
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  SETUP FORM
+  // ════════════════════════════════════════════════════════════
+  function buildSetupForm() {
+    const imgOpts = project_images.length
+      ? project_images.map(p => `<option value="${p}">${p.split('/').pop()}</option>`).join('')
+      : '<option value="">No images found in /objects/</option>';
+
+    const annOpts = project_annotations.length
+      ? project_annotations.map(p => `<option value="${p}">${p.split('/').pop()}</option>`).join('')
+      : '';
+
+    annotator_div.innerHTML = `
+<div id="setup-panel" class="py-3">
+  <div class="row g-3 mb-3">
+
+    <!-- Source selection -->
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">Layer Source</div>
+        <div class="card-body">
+          <div class="mb-3 d-flex gap-4">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="layerType" id="typeImage" value="image" checked>
+              <label class="form-check-label" for="typeImage">Project Image</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="layerType" id="typeMap" value="map">
+              <label class="form-check-label" for="typeMap">Base Map</label>
+            </div>
+          </div>
+          <div id="img-group">
+            <label for="imageSelect" class="form-label mb-1">Select Image</label>
+            <select class="form-select" id="imageSelect">${imgOpts}</select>
+          </div>
+          <div id="map-group" class="d-none">
+            <label for="mapLayerSelect" class="form-label mb-1">Base Map Layer</label>
+            <select class="form-select" id="mapLayerSelect">
+              <option value="osm">OpenStreetMap</option>
+              <option value="esri_street">Esri World Street Map</option>
+              <option value="esri_natgeo">Esri National Geographic</option>
+              <option value="esri_imagery">Esri World Imagery (Satellite)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Optional annotation file -->
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">
+          Load Existing Annotations
+          <span class="text-muted fw-normal small">(optional)</span>
+        </div>
+        <div class="card-body">
+          ${annOpts ? `
+          <div class="mb-3">
+            <label for="annSelect" class="form-label mb-1">From project files</label>
+            <select class="form-select" id="annSelect">
+              <option value="">— None —</option>
+              ${annOpts}
+            </select>
+          </div>
+          <p class="text-center text-muted small my-1">— or —</p>` : ''}
+          <div>
+            <label for="annUpload" class="form-label mb-1">Upload a JSON file</label>
+            <input class="form-control" type="file" id="annUpload" accept=".json">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex align-items-center gap-3">
+    <button class="btn btn-primary" id="loadBtn">Load Annotator</button>
+    <span id="setup-error" class="text-danger d-none small"></span>
+  </div>
+</div>
+
+<!-- Annotator panel (hidden until loaded) -->
+<div id="ann-panel" class="d-none">
+  <div class="row g-0" style="height:80vh; min-height:480px;">
+
+    <!-- Leaflet map column -->
+    <div class="col-lg-8" style="height:100%;">
+      <div id="leaflet-map" style="height:100%; width:100%;"></div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-lg-4 border-start d-flex flex-column" style="height:100%; overflow:hidden;">
+
+      <!-- Sidebar header -->
+      <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center flex-shrink-0">
+        <h5 class="mb-0">
+          Annotations
+          <span class="badge bg-secondary ms-1" id="ann-count">0</span>
+        </h5>
+        <div class="d-flex gap-1">
+          <button class="btn btn-sm btn-outline-secondary" id="backBtn" title="Back to setup">&#8592; Back</button>
+          <button class="btn btn-sm btn-success" id="exportBtn">Export JSON</button>
+        </div>
+      </div>
+
+      <p class="text-muted small px-3 pt-2 mb-0 flex-shrink-0">
+        Click the map or image to place an annotation point.
+      </p>
+
+      <!-- Annotation edit/add form -->
+      <div id="ann-form" class="mx-3 mt-2 mb-1 border rounded p-3 flex-shrink-0 d-none">
+        <h6 id="form-heading" class="mb-3">New Annotation</h6>
+        <input type="hidden" id="ann-idx">
+        <input type="hidden" id="ann-lat">
+        <input type="hidden" id="ann-lng">
+
+        <div class="mb-2">
+          <label for="ann-title" class="form-label form-label-sm mb-1">Title</label>
+          <input type="text" class="form-control form-control-sm" id="ann-title" placeholder="Annotation heading">
+        </div>
+        <div class="mb-2">
+          <label for="ann-desc" class="form-label form-label-sm mb-1">Description</label>
+          <textarea class="form-control form-control-sm" id="ann-desc" rows="3" placeholder="Description text"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label form-label-sm mb-1">Marker Color</label>
+          <div class="d-flex flex-wrap gap-1" id="color-picker">
+            ${Object.entries(colors).map(([name, hex]) => `
+              <input type="radio" class="btn-check" name="markerColor" id="mc_${name}" value="${name}" autocomplete="off">
+              <label class="btn btn-sm px-3" for="mc_${name}"
+                     style="background-color:${hex};border-color:${hex};color:${name === 'warning' ? '#212529' : '#fff'}"
+                     title="${name}">&nbsp;</label>
+            `).join('')}
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-primary" id="save-btn">Save</button>
+          <button class="btn btn-sm btn-outline-secondary" id="cancel-btn">Cancel</button>
+          <button class="btn btn-sm btn-outline-danger ms-auto d-none" id="delete-btn">Delete</button>
+        </div>
+      </div>
+
+      <!-- Annotation list -->
+      <div class="flex-grow-1 overflow-y-auto px-2 pb-2 mt-1">
+        <p class="text-muted small text-center mt-3" id="no-ann-msg">No annotations yet.</p>
+        <div class="list-group list-group-flush" id="ann-list"></div>
+      </div>
+
+    </div><!-- /sidebar -->
+  </div>
+</div>`;
+
+    // Radio toggle: image ↔ map groups
+    document.querySelectorAll('input[name="layerType"]').forEach(r => {
+      r.addEventListener('change', function () {
+        document.getElementById('img-group').classList.toggle('d-none', this.value !== 'image');
+        document.getElementById('map-group').classList.toggle('d-none', this.value !== 'map');
+      });
+    });
+
+    document.getElementById('loadBtn').addEventListener('click', handleLoad);
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  LOAD HANDLER
+  // ════════════════════════════════════════════════════════════
+  async function handleLoad() {
+    const mode      = document.querySelector('input[name="layerType"]:checked').value;
+    const errorEl   = document.getElementById('setup-error');
+    const annSelect = document.getElementById('annSelect');
+    const annUpload = document.getElementById('annUpload');
+    errorEl.classList.add('d-none');
+
+    // Parse optional annotation JSON
+    let rawFeatures = null;
+    try {
+      if (annUpload && annUpload.files.length > 0) {
+        const txt = await annUpload.files[0].text();
+        rawFeatures = featuresFromJson(JSON.parse(txt));
+      } else if (annSelect && annSelect.value) {
+        const resp = await fetch(annSelect.value);
+        rawFeatures = featuresFromJson(await resp.json());
+      }
+    } catch (e) {
+      errorEl.textContent = 'Could not read annotation file: ' + e.message;
+      errorEl.classList.remove('d-none');
+      return;
+    }
+
+    if (mode === 'image') {
+      const imgSel = document.getElementById('imageSelect');
+      if (!imgSel || !imgSel.value) {
+        errorEl.textContent = 'Please select an image.';
+        errorEl.classList.remove('d-none');
+        return;
+      }
+      currentImgUrl = imgSel.value;
+      currentMode   = 'image';
+      try {
+        const sz = await getImageSize(currentImgUrl);
+        imgNatWidth  = sz.w;
+        imgNatHeight = sz.h;
+      } catch (e) {
+        errorEl.textContent = e.message;
+        errorEl.classList.remove('d-none');
+        return;
+      }
+      showAnnotatorPanel();
+      initImageMap(rawFeatures);
+    } else {
+      currentLayer = document.getElementById('mapLayerSelect').value;
+      currentMode  = 'map';
+      showAnnotatorPanel();
+      initBaseMap(rawFeatures);
+    }
+  }
+
+  function showAnnotatorPanel() {
+    document.getElementById('setup-panel').classList.add('d-none');
+    document.getElementById('ann-panel').classList.remove('d-none');
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  MAP INITIALIZATION
+  // ════════════════════════════════════════════════════════════
+
+  /** Image overlay using CRS.Simple + pixel-based unproject coordinate system */
+  function initImageMap(rawFeatures) {
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    markerObjs = [];
+
+    leafletMap = L.map('leaflet-map', {
+      crs:     L.CRS.Simple,
+      minZoom: -5,
+      maxZoom: 5,
+      fullscreenControl: true
+    });
+
+    // map.unproject([col, row], 0) converts pixel → latlng so that pixel (0,0)
+    // is the top-left corner, matching standard image coordinates.
+    const sw = leafletMap.unproject([0,             imgNatHeight], 0);
+    const ne = leafletMap.unproject([imgNatWidth,   0           ], 0);
+    const bounds = L.latLngBounds(sw, ne);
+
+    L.imageOverlay(currentImgUrl, bounds).addTo(leafletMap);
+    leafletMap.fitBounds(bounds);
+
+    // Restore or convert loaded features
+    const stored = loadSession(currentImgUrl);
+    if (stored && stored.annotations && stored.annotations.length) {
+      annotations = stored.annotations;
+    } else if (rawFeatures && rawFeatures.length) {
+      annotations = resolveCoords(rawFeatures, 'image');
+    } else {
+      annotations = [];
+    }
+
+    renderAllMarkers();
+    renderAnnotationList();
+    bindMapClick();
+    bindSidebarButtons();
+  }
+
+  /* Standard geographic tile-layer map */
+  function initBaseMap(rawFeatures) {
+    if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+    markerObjs = [];
+
+    leafletMap = L.map('leaflet-map', {
+      center: [20, 0],
+      zoom:   3,
+      fullscreenControl: true
+    });
+
+    tileLayers[currentLayer].addTo(leafletMap);
+
+    const stored = loadSession('map:' + currentLayer);
+    if (stored && stored.annotations && stored.annotations.length) {
+      annotations = stored.annotations;
+    } else if (rawFeatures && rawFeatures.length) {
+      annotations = resolveCoords(rawFeatures, 'map');
+    } else {
+      annotations = [];
+    }
+
+    renderAllMarkers();
+    renderAnnotationList();
+    bindMapClick();
+    bindSidebarButtons();
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  MAP CLICK → OPEN FORM FOR NEW ANNOTATION
+  // ════════════════════════════════════════════════════════════
+  function bindMapClick() {
+    leafletMap.on('click', function (e) {
+      // Ignore if a form is already open for a pending new point
+      if (editingIdx === -1 && pendingMarker) return;
+      openFormNew(e.latlng);
+    });
+  }
+
+  function openFormNew(latlng) {
+    editingIdx = -1;
+    cancelPendingMarker();
+
+    // Place a temporary marker at the clicked location
+    pendingMarker = L.marker(latlng, { icon: makeIcon('primary'), draggable: true }).addTo(leafletMap);
+
+    // Update hidden lat/lng if the user drags it before saving
+    pendingMarker.on('dragend', function () {
+      const ll = pendingMarker.getLatLng();
+      document.getElementById('ann-lat').value = ll.lat;
+      document.getElementById('ann-lng').value = ll.lng;
+    });
+
+    fillForm(-1, latlng.lat, latlng.lng, '', '', 'primary');
+    showForm('New Annotation', false);
+  }
+
+  function openFormEdit(idx) {
+    const a = annotations[idx];
+    editingIdx = idx;
+    cancelPendingMarker();
+    fillForm(idx, a.lat, a.lng, a.title, a.description, a.color);
+    showForm('Edit Annotation', true);
+    leafletMap.panTo([a.lat, a.lng]);
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  ANNOTATION FORM HELPERS
+  // ════════════════════════════════════════════════════════════
+  function fillForm(idx, lat, lng, title, desc, color) {
+    document.getElementById('ann-idx').value   = idx;
+    document.getElementById('ann-lat').value   = lat;
+    document.getElementById('ann-lng').value   = lng;
+    document.getElementById('ann-title').value = title;
+    document.getElementById('ann-desc').value  = desc;
+    const radio = document.getElementById('mc_' + color) || document.getElementById('mc_primary');
+    if (radio) radio.checked = true;
+  }
+
+  function showForm(heading, showDelete) {
+    document.getElementById('form-heading').textContent = heading;
+    document.getElementById('delete-btn').classList.toggle('d-none', !showDelete);
+    document.getElementById('ann-form').classList.remove('d-none');
+    document.getElementById('ann-title').focus();
+  }
+
+  function hideForm() {
+    document.getElementById('ann-form').classList.add('d-none');
+    cancelPendingMarker();
+    editingIdx = -1;
+  }
+
+  function cancelPendingMarker() {
+    if (pendingMarker) { leafletMap.removeLayer(pendingMarker); pendingMarker = null; }
+  }
+
+  function bindSidebarButtons() {
+    document.getElementById('save-btn').addEventListener('click', saveAnnotation);
+    document.getElementById('cancel-btn').addEventListener('click', hideForm);
+    document.getElementById('delete-btn').addEventListener('click', deleteAnnotation);
+    document.getElementById('exportBtn').addEventListener('click', exportJson);
+    document.getElementById('backBtn').addEventListener('click', function () {
+      if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+      markerObjs = []; annotations = []; editingIdx = -1; pendingMarker = null;
+      document.getElementById('ann-panel').classList.add('d-none');
+      document.getElementById('setup-panel').classList.remove('d-none');
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  SAVE / DELETE
+  // ════════════════════════════════════════════════════════════
+  function saveAnnotation() {
+    const lat   = parseFloat(document.getElementById('ann-lat').value);
+    const lng   = parseFloat(document.getElementById('ann-lng').value);
+    const title = document.getElementById('ann-title').value.trim();
+    const desc  = document.getElementById('ann-desc').value.trim();
+    const color = (document.querySelector('input[name="markerColor"]:checked') || {}).value || 'primary';
+    const idx   = parseInt(document.getElementById('ann-idx').value, 10);
+
+    if (!title) {
+      document.getElementById('ann-title').classList.add('is-invalid');
+      document.getElementById('ann-title').focus();
+      return;
+    }
+    document.getElementById('ann-title').classList.remove('is-invalid');
+
+    const ann = { lat, lng, title, description: desc, color };
+
+    if (idx === -1) {
+      // New annotation — remove temporary pending marker (real one added below)
+      cancelPendingMarker();
+      annotations.push(ann);
+    } else {
+      annotations[idx] = ann;
+      // Remove old marker so it is redrawn
+      if (markerObjs[idx]) { leafletMap.removeLayer(markerObjs[idx]); markerObjs[idx] = null; }
+    }
+
+    hideForm();
+    renderAllMarkers();
+    renderAnnotationList();
+    saveSession();
+  }
+
+  function deleteAnnotation() {
+    const idx = parseInt(document.getElementById('ann-idx').value, 10);
+    if (idx < 0 || idx >= annotations.length) return;
+    if (markerObjs[idx]) leafletMap.removeLayer(markerObjs[idx]);
+    annotations.splice(idx, 1);
+    markerObjs.splice(idx, 1);
+    hideForm();
+    renderAllMarkers();
+    renderAnnotationList();
+    saveSession();
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  RENDER MARKERS
+  // ════════════════════════════════════════════════════════════
+  function renderAllMarkers() {
+    // Clear existing markers
+    markerObjs.forEach(m => { if (m) leafletMap.removeLayer(m); });
+    markerObjs = [];
+
+    annotations.forEach((a, i) => {
+      const m = L.marker([a.lat, a.lng], { icon: makeIcon(a.color) })
+        .addTo(leafletMap)
+        .bindTooltip(a.title || '(no title)', { direction: 'top', offset: [0, -30] });
+      m.on('click', function (e) {
+        L.DomEvent.stopPropagation(e);
+        openFormEdit(i);
+      });
+      markerObjs.push(m);
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  RENDER ANNOTATION LIST (sidebar)
+  // ════════════════════════════════════════════════════════════
+  function renderAnnotationList() {
+    const listEl  = document.getElementById('ann-list');
+    const noAnnEl = document.getElementById('no-ann-msg');
+    const countEl = document.getElementById('ann-count');
+
+    countEl.textContent = annotations.length;
+    noAnnEl.classList.toggle('d-none', annotations.length > 0);
+    listEl.innerHTML = '';
+
+    annotations.forEach((a, i) => {
+      const hex = colors[a.color] || colors.primary;
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'list-group-item list-group-item-action py-2 px-2 d-flex align-items-start gap-2';
+      item.innerHTML = `
+        <span style="width:12px;height:12px;border-radius:50%;background:${hex};flex-shrink:0;margin-top:.2em;"></span>
+        <span class="overflow-hidden">
+          <strong class="d-block text-truncate">${escHtml(a.title || '(no title)')}</strong>
+          <small class="text-muted text-truncate d-block">${escHtml(a.description ? a.description.substring(0, 80) + (a.description.length > 80 ? '…' : '') : '')}</small>
+        </span>`;
+      item.addEventListener('click', () => openFormEdit(i));
+      listEl.appendChild(item);
+    });
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  EXPORT JSON
+  // ════════════════════════════════════════════════════════════
+  function exportJson() {
+    let json;
+
+    if (currentMode === 'image') {
+      // CRSFeatureCollection – coordinates are [pixel_x, pixel_y] (top-left origin)
+      // map.project(latlng, 0) → L.Point {x: col, y: row}
+      const features = annotations.map(a => {
+        const pt = leafletMap.project([a.lat, a.lng], 0);
+        return {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [Math.round(pt.x), Math.round(pt.y)] },
+          properties: { title: a.title, description: a.description, color: a.color }
+        };
+      });
+      json = {
+        type:     'CRSFeatureCollection',
+        width:    imgNatWidth,
+        height:   imgNatHeight,
+        imageurl: currentImgUrl,
+        features
+      };
+    } else {
+      // Standard GeoJSON FeatureCollection – coordinates are [lng, lat]
+      const features = annotations.map(a => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [a.lng, a.lat] },
+        properties: { title: a.title, description: a.description, color: a.color }
+      }));
+      json = { type: 'FeatureCollection', features };
+    }
+
+    const blob = new Blob([JSON.stringify(json, null, 4)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = currentMode === 'image'
+      ? (currentImgUrl.split('/').pop().replace(/\.[^.]+$/, '') + '-annotations.json')
+      : ('map-' + currentLayer + '-annotations.json');
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  }
+
+  // ── Bootstrap! ─────────────────────────────────────────────
+  buildSetupForm();
+
+})();
 
 
 
