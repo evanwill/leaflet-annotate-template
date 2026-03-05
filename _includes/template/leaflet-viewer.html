@@ -106,7 +106,15 @@ var OpenStreetMap_Mapnik = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{
     const bounds = L.latLngBounds(sw, ne);
 
     L.imageOverlay(json.imageurl, bounds).addTo(map);
-    map.fitBounds(bounds);
+    // Compute the exact fractional zoom that makes the image fill the container.
+    // fitBounds snaps to integer zoom and leaves letterbox space; log2 of the
+    // container-to-image pixel ratio gives the precise CRS.Simple zoom level.
+    map.invalidateSize();
+    const cW = map.getContainer().offsetWidth;
+    const cH = map.getContainer().offsetHeight;
+    const fillZoom = Math.log2(Math.min(cW / w, cH / h));
+    const imgCenter = map.unproject([w / 2, h / 2], 0);
+    map.setView(imgCenter, fillZoom, { animate: false });
 
     (json.features || []).forEach(function (f) {
       if (!f.geometry || f.geometry.type !== 'Point') return;
