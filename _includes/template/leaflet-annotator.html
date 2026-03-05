@@ -10,6 +10,9 @@
 <script src="{{ '/assets/lib' | relative_url }}/leaflet/Leaflet.fullscreen.min.js"></script>
 <script>
 
+// Element in page to add the image and annotator
+const annotator_div = document.getElementById("annotator");
+
 // Color options for annotation tagging (Bootstrap theme colors)
 const colors = {
   primary:   "#0d6efd",
@@ -21,13 +24,41 @@ const colors = {
   dark:      "#212529"
 };
 
-// Element in page to add the image and annotator
-const annotator_div = document.getElementById("annotator");
-
 // List of images available in the project from "objects" directory
 const project_images = [ {% for i in images %}"{{ i.path | relative_url }}",{% endfor %} ];
 
 // List of existing annotation json files in the project from "objects" directory
 const project_annotations = [ {% for i in annotations %}"{{ i.path | relative_url }}",{% endfor %} ];
+
+/* map layer options */
+var Esri_WorldStreetMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
+});
+var Esri_NatGeoWorldMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC',
+    maxZoom: 16
+});
+var Esri_WorldImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+});
+var OpenStreetMap_Mapnik = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+});
+
+// Leaflet annotator starts with a form asking user to select an image from "project_images" (images that are in the "objects" folder) or a standard base map layer option. 
+// If the selected option is loaded into leaflet interface
+// the annotator interface allows users to click on the image or map layer to add a point at those coordinates
+// the coordinates on normal maps follow standard lat long
+// on images they use Leaflet CRS.simple, https://leafletjs.com/reference.html#crs
+// https://leafletjs.com/examples/crs-simple/crs-simple.html
+// A form on the side allows the user to add a heading, description text, 
+// and choose a marker color from the list of color options
+// the data is saved into local sessionStorage
+// a button is available to export the annotations as a JSON file
+// for images the JSON file is structured like the file "objects/annotation-example.json"
+// for maps the JSON file is structured like the file "objects/geodata.json"
+
+
 
 </script>

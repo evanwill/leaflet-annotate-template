@@ -1,0 +1,41 @@
+{
+    "type": "CRSFeatureCollection",
+    "width": 2000,
+    "height": 1347,
+    "imageurl": "/objects/bJcrjY9.jpg",
+    "features": [
+        {
+            "type":"Feature",
+            "geometry":{
+                "type":"Point",
+                "coordinates":[1244,898]
+            },            
+            "properties":{
+                "title": "Administration Building, University of Idaho, No. 30",
+                "description": "Example locally hosted image item. Photographic postcard of the University of Idaho administration building in Moscow, Idaho."
+            }
+        }, 
+        {
+            "type":"Feature",
+            "geometry":{
+                "type":"Point",
+                "coordinates":[658,734]
+            },            
+            "properties":{
+                "title": "Spokane County Court House, Spokane, Washington",
+                "description": "Example locally hosted PDF item. Postcard is of the Spokane County Courthouse in Spokane, Washington. Postmark 9/8/1912, Spokane, WA. Destination San Francisco, CA."
+            }
+        }, 
+        {
+            "type":"Feature",
+            "geometry":{
+                "type":"Point",
+                "coordinates":[1044,778]
+            },            
+            "properties":{
+                "title": "Good News Power (Radio Episode Excerpt)",
+                "description": "Example locally hosted audio item. A short excerpt from a Psychiana radio program episode that begins with assurance that there is a Power that can get people what they desire. Robinson then discusses his early life failures and childhood seeking of some force that could turn his failures into success. He asserts the God-Power can turn our failures into success and bring us material and spiritual abundance."
+            }
+        }
+    ]
+}
