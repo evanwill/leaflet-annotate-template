@@ -9,4 +9,4 @@
     - annotation = the filename of a JSON annotation file contained in the "objects" directory of this project. E.g. "campus-places.json" (required)
 
 {% endcomment %}
-<div id="{{ include.annotation | slugify }}" class="leaflet-item" data-annotation-file="{{ '/objects' | relative_url }}/{{ include.annotation }}"></div>
+<div id="{{ include.annotation | slugify }}" class="leaflet-item my-4" data-annotation-file="{{ '/objects' | relative_url }}/{{ include.annotation }}"></div>
