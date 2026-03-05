@@ -86,10 +86,37 @@ var OpenStreetMap_Mapnik = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  /* ── custom Leaflet control: toggle marker layer on/off ── */
+  function addToggleControl(map, markerLayer) {
+    const ToggleControl = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd: function () {
+        const btn = L.DomUtil.create('button');
+        btn.className = 'leaflet-bar';
+        btn.style.cssText = 'width:34px;height:34px;background:#fff;border:none;cursor:pointer;font-size:18px;line-height:34px;text-align:center;display:block;';
+        btn.title = 'Toggle markers';
+        btn.setAttribute('aria-pressed', 'true');
+        btn.innerHTML = '&#x1F4CD;';
+        let visible = true;
+        L.DomEvent.on(btn, 'click', function (e) {
+          L.DomEvent.stopPropagation(e);
+          visible = !visible;
+          btn.setAttribute('aria-pressed', String(visible));
+          btn.style.opacity = visible ? '1' : '0.4';
+          if (visible) { markerLayer.addTo(map); }
+          else { map.removeLayer(markerLayer); }
+        });
+        return btn;
+      }
+    });
+    new ToggleControl().addTo(map);
+  }
+
   /* ── initialise a CRS.Simple image viewer ── */
   function initImageViewer(el, json) {
     const w = json.width;
     const h = json.height;
+    const markerLayer = L.layerGroup();
 
     const map = L.map(el, {
       crs:              L.CRS.Simple,
@@ -122,15 +149,19 @@ var OpenStreetMap_Mapnik = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{
       const latlng   = map.unproject([px, py], 0);
       const props    = f.properties || {};
       L.marker(latlng, { icon: makeIcon(props.color) })
-        .addTo(map)
-        .bindPopup(makePopup(props));
+        .bindPopup(makePopup(props))
+        .addTo(markerLayer);
     });
+
+    markerLayer.addTo(map);
+    if (json.features && json.features.length) addToggleControl(map, markerLayer);
   }
 
   /* ── initialise a geographic tile-layer viewer ── */
   function initMapViewer(el, json) {
     // Fall back to OpenStreetMap if the basemap key is not recognised
-    const baseLayer = tileLayers[json.basemap] || OpenStreetMap_Mapnik;
+    const baseLayer   = tileLayers[json.basemap] || OpenStreetMap_Mapnik;
+    const markerLayer = L.layerGroup();
 
     const map = L.map(el, {
       center:            [20, 0],
@@ -147,15 +178,18 @@ var OpenStreetMap_Mapnik = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{
       const [lng, lat] = f.geometry.coordinates;      // GeoJSON [lng, lat]
       const props      = f.properties || {};
       const m = L.marker([lat, lng], { icon: makeIcon(props.color) })
-        .addTo(map)
         .bindPopup(makePopup(props));
+      markerLayer.addLayer(m);
       markers.push(m);
     });
+
+    markerLayer.addTo(map);
 
     // Zoom map to fit all markers when there are any
     if (markers.length > 0) {
       const group = L.featureGroup(markers);
       map.fitBounds(group.getBounds().pad(0.15));
+      addToggleControl(map, markerLayer);
     }
   }
 
