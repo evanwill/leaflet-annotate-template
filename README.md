@@ -1,37 +1,30 @@
-# bootstrap5-template
+# leaflet-annotate-template
 
-[bootstrap5-template](https://github.com/thecdil/bootstrap-template) is a basic template repository to create a [Bootstrap 5](https://getbootstrap.com/) site using Jekyll on GitHub Pages (or where every you want to host it). 
-The layout is based on the [Bootstrap starter template example](https://getbootstrap.com/docs/5.3/examples/) with a navbar, search box (using lunr.js), and footer.
-It is intended as a quick starting point for creating new web projects.
+leaflet-annotate-template is a simple website template for creating a presentation with annotated images and maps.
+It uses Jekyll static site generation, Bootstrap 5, and [Leaflet.js](https://leafletjs.com/).
+This makes it easy to host on GitHub Pages or anywhere else.
 
-Demo: <https://thecdil.github.io/bootstrap5-template/>
+## Get Started
 
-*Please note: if you are looking for older bootstrap 4 version, see [bootstrap-template](https://github.com/thecdil/bootstrap-template).*
+- Set up your website:
+    - Create a copy of the [template](https://github.com/evanwill/leaflet-annotate-template).
+    - Add your images to the "objects" folder.
+    - Activate GitHub Pages to create your live site.
+    - For more detailed instructions see "docs/create-website.md"
+- Annotate images or map:
+    - Visit Annotate page.
+    - Select image and use the interface to create/edit annotations.
+    - Download annotation data as JSON.
+    - Add the annotation JSON file to project repository "objects" folder.
+- Publish annotated images:
+    - Create or edit a content page (see "docs/create-website.md" for details).
+    - Add `leaflet-viewer: true` to the front matter.
+    - Use the "leaflet-item.html" include to add annotated images to the page. Check the comments in the include for all supported options.
 
-## Get Started 
+## Guidelines
 
-- Click green "Use this template" button to make a copy of the code in your own repository (alternatively, use Import or manually copy files)
-- Edit `_config.yml` with your site information
-- In your new repository visit "Settings" > "Pages" to activate GitHub Pages
-- Edit and create pages in the "pages" folder (probably in Markdown). Use each page's yaml front matter to populate the navbar:
-    - `title` will appear as h1 at top of the page content.
-    - `nav` if this option has a value, it will appear in the navbar as link to this page.
-    - `nav_order` navbar items will be sorted using this number. 
-- Use "includes" to simplify adding Bootstrap features to Markdown pages (see comments in the "_include/" files for instructions).
-
-See [docs/create-website.md](https://github.com/thecdil/bootstrap5-template/blob/main/docs/create-website.md) for more details.
-
-## Customize 
-
-- Tweak base variables in `assets/css/main.scss` (text color, link color, container size)
-- Add custom CSS to `_sass/_custom.scss` (content of `_sass/_template.scss` relates to template components)
-- Use Bootstrap to customize `_layouts/` and `_includes/template/`.
-
-## Template Assets
-
-Included in assets/lib folder:
-
-- [Bootstrap](https://getbootstrap.com/) 5.3.8
-- [Bootstrap Icons](https://icons.getbootstrap.com/) 1.13.1
-- [lunr.js](https://lunrjs.com/) 2.3.9
-- [lazysizes](https://github.com/aFarkas/lazysizes) 5.3.2
+- Supported image types include JPG and PNG. Ensure your file extensions are lowercase, `.jpg`, `.jpeg`, or `.png` only.
+- For ease of use, create meaningful filenames without spaces.
+- You can set the default annotation styles (fill, opacity, stroke color, stroke width) in "_config.yml" or as front matter on each page.
+- If you have issues with the "Annotate Image" page caching old versions of your annotations, open the page in a new browser window.
+- Unpublish the "Annotate Image" page when you are done annotating images and don't want it to display publicly by removing the `nav:` option from the front matter (or just deleting "pages/annotate.html").

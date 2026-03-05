@@ -4,15 +4,31 @@ nav: About
 nav_order: 2
 ---
 
-[bootstrap5-template](https://github.com/thecdil/bootstrap5-template) is a basic template repository to create a [Bootstrap 5](https://getbootstrap.com/) site using Jekyll on GitHub Pages (or where every you want to host it). 
-The layout is based on the [Bootstrap starter template example](https://getbootstrap.com/docs/5.1/examples/) with a navbar, search box (using lunr.js), and sticky footer.
-It is intended as a quick starting point for creating new web projects.
+[leaflet-annotate-template](https://github.com/evanwill/leaflet-annotate-template) is a simple website template for creating a presentation with annotated images and maps.
+It uses Jekyll static site generation, Bootstrap 5, and [Leaflet.js](https://leafletjs.com/).
+This makes it easy to host on GitHub Pages or anywhere else.
 
-The basic steps for using bootstrap-template are: 
+## Get Started
 
-1. create repository from the template
-2. edit _config.yml
-3. edit content pages
-4. use customization options
+- Set up your website:
+    - Create a copy of the [template](https://github.com/evanwill/leaflet-annotate-template).
+    - Add your images to the "objects" folder.
+    - Activate GitHub Pages to create your live site.
+    - For more detailed instructions see "docs/create-website.md"
+- Annotate images or map:
+    - Visit Annotate page.
+    - Select image and use the interface to create/edit annotations.
+    - Download annotation data as JSON.
+    - Add the annotation JSON file to project repository "objects" folder.
+- Publish annotated images:
+    - Create or edit a content page (see "docs/create-website.md" for details).
+    - Add `leaflet-viewer: true` to the front matter.
+    - Use the "leaflet-item.html" include to add annotated images to the page. Check the comments in the include for all supported options.
 
-See [docs/create-website.md](https://github.com/thecdil/bootstrap5-template/blob/main/docs/create-website.md) for details!
+## Guidelines
+
+- Supported image types include JPG and PNG. Ensure your file extensions are lowercase, `.jpg`, `.jpeg`, or `.png` only.
+- For ease of use, create meaningful filenames without spaces.
+- You can set the default annotation styles (fill, opacity, stroke color, stroke width) in "_config.yml" or as front matter on each page.
+- If you have issues with the "Annotate Image" page caching old versions of your annotations, open the page in a new browser window.
+- Unpublish the "Annotate Image" page when you are done annotating images and don't want it to display publicly by removing the `nav:` option from the front matter (or just deleting "pages/annotate.html").
